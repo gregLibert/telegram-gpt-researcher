@@ -1,0 +1,65 @@
+services:
+  gpt-researcher:
+    build:
+      context: ./services/gpt-researcher
+      dockerfile: Dockerfile
+      args:
+        GPT_RESEARCHER_REF: ${GPT_RESEARCHER_REF:-main}
+    image: telegram-gpt-researcher/gpt-researcher:arm64
+    restart: unless-stopped
+    shm_size: "2gb"
+    ports:
+      - "${GPTR_HOST_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8000"
+      WORKERS: ${GPTR_WORKERS:-1}
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-INFO}
+      # Chromium / Selenium (headless, Docker, ARM64-friendly)
+      CHROME_BIN: /usr/bin/chromium
+      CHROMIUM_FLAGS: "--headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --disable-setuid-sandbox --window-size=1920,1080 --remote-debugging-port=9222"
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+    volumes:
+      - gptr_outputs:/usr/src/app/outputs
+      - gptr_my_docs:/usr/src/app/my-docs
+      - gptr_logs:/usr/src/app/logs
+      - gptr_report_store:/usr/src/app/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=5).read(1)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  telegram-bot:
+    build:
+      context: ./telegram-bot
+      dockerfile: Dockerfile
+    image: telegram-gpt-researcher/telegram-bot:arm64
+    restart: unless-stopped
+    depends_on:
+      gpt-researcher:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      GPTR_API_URL: ${GPTR_API_URL:-http://gpt-researcher:8000}
+      BOT_ARTIFACT_DIR: /tmp/bot-artifacts
+    volumes:
+      - bot_tmp:/tmp/bot-artifacts
+
+volumes:
+  gptr_outputs:
+  gptr_my_docs:
+  gptr_logs:
+  gptr_report_store:
+  bot_tmp:
