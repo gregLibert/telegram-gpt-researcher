@@ -4,7 +4,7 @@ services:
       context: ./services/gpt-researcher
       dockerfile: Dockerfile
       args:
-        GPT_RESEARCHER_REF: ${GPT_RESEARCHER_REF:-main}
+        GPT_RESEARCHER_REF: ${GPT_RESEARCHER_REF:-v3.4.3}
     image: telegram-gpt-researcher/gpt-researcher:arm64
     restart: unless-stopped
     shm_size: "2gb"
@@ -33,7 +33,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=5).read(1)",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/openapi.json', timeout=5).read(1)",
         ]
       interval: 30s
       timeout: 10s

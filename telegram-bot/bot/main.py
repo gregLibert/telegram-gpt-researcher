@@ -30,6 +30,31 @@ logging.basicConfig(
 logger = logging.getLogger("telegram_bot")
 
 
+def _research_concurrency_limit() -> int:
+    """
+    Max concurrent GPT Researcher jobs (1–2). Parsed from ``RESEARCH_MAX_CONCURRENT`` (default 1).
+
+    Limits parallel ``_process_research_task`` runs to reduce RAM pressure on small hosts (e.g. ARM SBCs).
+    """
+    raw = os.environ.get("RESEARCH_MAX_CONCURRENT", "1").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        return 1
+    return max(1, min(2, n))
+
+
+async def _process_research_task_guarded(
+    application: Application,
+    chat_id: int,
+    parsed: ParsedResearchCommand,
+) -> None:
+    """Acquire the global research slot, then run :func:`_process_research_task` (queued if busy)."""
+    semaphore: asyncio.Semaphore = application.bot_data["research_semaphore"]
+    async with semaphore:
+        await _process_research_task(application, chat_id, parsed)
+
+
 def _load_allowed_ids_from_env() -> set[int]:
     """
     Read ``TELEGRAM_ALLOWED_USER_IDS`` and parse it into a set of integer user IDs.
@@ -256,6 +281,7 @@ async def cmd_research(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     Handle /research: enforce allowlist, parse argv, acknowledge immediately, and schedule work.
 
     Long-running work runs in ``asyncio.create_task`` so the handler returns quickly.
+    Concurrent jobs are capped by :func:`_research_concurrency_limit` via a semaphore.
     """
     pair = _user_and_message(update)
     if pair is None:
@@ -278,7 +304,7 @@ async def cmd_research(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await message.reply_chat_action(action="typing")
     await message.reply_text("Recherche lancée…")
     asyncio.create_task(
-        _process_research_task(context.application, message.chat_id, parsed),
+        _process_research_task_guarded(context.application, message.chat_id, parsed),
         name=f"research-{user.id}-{message.message_id}",
     )
 
@@ -303,6 +329,7 @@ def main() -> None:
         .build()
     )
     app.bot_data["allowed_ids"] = allowed_ids
+    app.bot_data["research_semaphore"] = asyncio.Semaphore(_research_concurrency_limit())
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))

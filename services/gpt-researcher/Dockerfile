@@ -24,7 +24,8 @@ FROM install-browser AS gpt-researcher-install
 ENV PIP_ROOT_USER_ACTION=ignore
 WORKDIR /usr/src/app
 
-ARG GPT_RESEARCHER_REF=main
+# Pinned release tag (override at build time via docker-compose / build-arg)
+ARG GPT_RESEARCHER_REF=v3.4.3
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \
@@ -36,7 +37,7 @@ RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt --upgrade --prefer-binary \
     && pip install --no-cache-dir -r multi_agents/requirements.txt --upgrade --prefer-binary \
     # Ajout des dépendances pour les Retrievers et Scrapers alternatifs
-    && pip install --no-cache-dir duckduckgo-search nodriver beautifulsoup4
+    && pip install --no-cache-dir duckduckgo-search ddgs nodriver zendriver beautifulsoup4
 
 FROM gpt-researcher-install AS gpt-researcher
 
