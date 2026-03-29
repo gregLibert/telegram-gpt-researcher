@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 import httpx
-from telegram import Bot, BufferedInputFile, Message, Update, User
+from telegram import Bot, Message, Update, User
 from telegram.ext import Application, CommandHandler, ContextTypes, Defaults
 
 from bot.allowlist import parse_allowed_user_ids
@@ -141,12 +141,14 @@ async def _send_artifacts(
     pdf_bytes = pdf_path.read_bytes()
     await bot.send_document(
         chat_id=chat_id,
-        document=BufferedInputFile(md_bytes, filename=f"{base}.md"),
+        document=md_bytes,
+        filename=f"{base}.md",
         caption=md_caption,
     )
     await bot.send_document(
         chat_id=chat_id,
-        document=BufferedInputFile(pdf_bytes, filename=f"{base}.pdf"),
+        document=pdf_bytes,
+        filename=f"{base}.pdf",
         caption=pdf_caption,
     )
 
