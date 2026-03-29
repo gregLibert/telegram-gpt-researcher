@@ -13,8 +13,14 @@ from telegram.ext import Application, CommandHandler, ContextTypes, Defaults
 
 from bot.allowlist import parse_allowed_user_ids
 from bot.filename_sanitize import sanitize_download_basename
-from bot.gptr_client import generate_report
-from bot.pdf_export import markdown_to_basic_pdf_bytes
+from bot.gptr_client import (
+    ResearchDeliveryMeta,
+    format_delivery_summary,
+    generate_report,
+    parse_research_delivery_meta,
+)
+from bot.markdown_heading import extract_first_markdown_heading_title
+from bot.pdf_export import markdown_to_pdf_bytes
 from bot.research_parse import ParsedResearchCommand, parse_research_command
 
 logging.basicConfig(
@@ -80,10 +86,32 @@ def _prepare_artifact_paths(base: str) -> tuple[Path, Path]:
     return tmpdir / f"{base}.md", tmpdir / f"{base}.pdf"
 
 
+def _artifact_basename(report_md: str, fallback_id: str) -> str:
+    """Prefer the first Markdown H1/H2 title; otherwise fall back to the research id string."""
+    title = extract_first_markdown_heading_title(report_md)
+    raw = title if title else fallback_id
+    return sanitize_download_basename(raw)
+
+
+def _truncate_caption(text: str, max_len: int = 1024) -> str:
+    """Trim text to Telegram's caption limit."""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
+def _compose_document_caption(kind_label: str, summary_line: str) -> str:
+    """Merge a French file label with an optional English metrics line."""
+    summary_line = summary_line.strip()
+    if not summary_line:
+        return kind_label
+    return _truncate_caption(f"{kind_label}\n{summary_line}")
+
+
 def _write_markdown_and_pdf(md_path: Path, pdf_path: Path, report_md: str) -> None:
-    """Persist Markdown to disk and render a basic PDF next to it."""
+    """Persist Markdown to disk and render a formatted PDF next to it."""
     md_path.write_text(report_md, encoding="utf-8")
-    pdf_path.write_bytes(markdown_to_basic_pdf_bytes(report_md))
+    pdf_path.write_bytes(markdown_to_pdf_bytes(report_md))
 
 
 def _unlink_quiet(paths: tuple[Path, ...]) -> None:
@@ -102,19 +130,24 @@ async def _send_artifacts(
     base: str,
     md_path: Path,
     pdf_path: Path,
+    meta: ResearchDeliveryMeta,
 ) -> None:
-    """Send the Markdown and PDF files to the given Telegram chat as documents."""
+    """Send Markdown and PDF with captions that include cost and URL metrics when available."""
+    summary = format_delivery_summary(meta)
+    md_caption = _compose_document_caption("Rapport (Markdown)", summary)
+    pdf_caption = _compose_document_caption("Rapport (PDF)", summary)
+
     md_bytes = md_path.read_bytes()
     pdf_bytes = pdf_path.read_bytes()
     await bot.send_document(
         chat_id=chat_id,
         document=BufferedInputFile(md_bytes, filename=f"{base}.md"),
-        caption="Rapport (Markdown)",
+        caption=md_caption,
     )
     await bot.send_document(
         chat_id=chat_id,
         document=BufferedInputFile(pdf_bytes, filename=f"{base}.pdf"),
-        caption="Rapport (PDF basique)",
+        caption=pdf_caption,
     )
 
 
@@ -148,14 +181,22 @@ async def _process_research_task(
         await status.edit_text("Réponse sans rapport Markdown.")
         return
 
-    research_id = data.get("research_id", "report")
-    base = sanitize_download_basename(str(research_id))
+    meta = parse_research_delivery_meta(data)
+    fallback_id = str(data.get("research_id", "report"))
+    base = _artifact_basename(report_md, fallback_id)
     md_path, pdf_path = _prepare_artifact_paths(base)
 
     try:
         _write_markdown_and_pdf(md_path, pdf_path, report_md)
         await status.edit_text("Envoi des fichiers…")
-        await _send_artifacts(bot, chat_id, base=base, md_path=md_path, pdf_path=pdf_path)
+        await _send_artifacts(
+            bot,
+            chat_id,
+            base=base,
+            md_path=md_path,
+            pdf_path=pdf_path,
+            meta=meta,
+        )
         await status.edit_text("Terminé.")
     except Exception:
         logger.exception("Unexpected failure while building or sending research artifacts")
@@ -168,13 +209,43 @@ async def _process_research_task(
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /start with a short French usage hint."""
+    """Handle /start with a short French usage hint and a pointer to /help."""
     if update.message is None:
         return
     await update.message.reply_text(
-        "Assistant de recherche.\n"
-        "Utilisez : /research <votre question>\n"
-        "Vous recevrez un fichier .md et un .pdf."
+        "Assistant de recherche automatisé (GPT Researcher).\n\n"
+        "Posez une question avec : /research <votre sujet>\n"
+        "Vous recevrez un rapport en Markdown et en PDF.\n\n"
+        "Pour les modes avancés (--deep, plan détaillé, etc.), utilisez /help."
+    )
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handle /help: explain /research syntax and optional report modes (French user text).
+
+    Intended to make advanced flags discoverable without reading the source code.
+    """
+    if update.message is None:
+        return
+    await update.message.reply_text(
+        "📖 Aide — commande /research\n\n"
+        "Syntaxe :\n"
+        "/research [options…] <votre question ou sujet>\n\n"
+        "Vous pouvez enchaîner plusieurs options ; la dernière indiquée "
+        "prévaut pour le type de rapport.\n\n"
+        "Options disponibles :\n"
+        "• --deep ou -d — recherche approfondie (mode « deep »), plus exhaustive, "
+        "souvent plus long.\n"
+        "• --detailed — rapport détaillé, avec une analyse plus poussée.\n"
+        "• --outline — plan structuré (sommaire / outline) plutôt qu’un texte linéaire.\n"
+        "• --resource — rapport centré sur les ressources et références utiles.\n\n"
+        "Exemples :\n"
+        "/research Qu’est-ce que Docker ?\n"
+        "/research --deep historique du protocole HTTP\n"
+        "/research --outline --detailed veille sur l’IA en 2025\n\n"
+        "Astuce : les mots du type « deep learning » ne sont pas interprétés comme "
+        "l’option --deep ; utilisez bien le flag --deep devant la question."
     )
 
 
@@ -197,7 +268,8 @@ async def cmd_research(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if parsed is None:
         await message.reply_text(
             "Usage : /research [options] <question>\n"
-            "Options : --deep (-d), --detailed, --outline, --resource"
+            "Options : --deep (-d), --detailed, --outline, --resource\n"
+            "Tapez /help pour une description détaillée de chaque mode."
         )
         return
 
@@ -231,6 +303,7 @@ def main() -> None:
     app.bot_data["allowed_ids"] = allowed_ids
 
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("research", cmd_research))
 
     logger.info("Starting bot (long polling)…")
