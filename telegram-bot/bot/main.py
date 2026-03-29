@@ -176,21 +176,38 @@ async def _process_research_task(
     """
     Background job: call GPT Researcher, write artifacts, send them, and clean up files.
 
-    Network I/O (``generate_report``) runs outside the artifact ``try``/``finally`` so cleanup
-    never references ``md_path`` / ``pdf_path`` before assignment.
+    Initial Telegram status and ``generate_report`` share one ``try`` so a failed
+    ``send_message`` is logged without assuming ``status`` exists. Markdown/PDF work
+    uses ``asyncio.to_thread`` so WeasyPrint does not block the event loop. The
+    artifact ``try``/``finally`` keeps cleanup from referencing ``md_path`` /
+    ``pdf_path`` before assignment.
     """
     bot = application.bot
-    status = await bot.send_message(chat_id, "Génération du rapport en cours…")
-
+    status: Message | None = None
     try:
+        status = await bot.send_message(chat_id, "Génération du rapport en cours…")
         data = await generate_report(parsed.query, report_type=parsed.report_type)
     except httpx.HTTPStatusError as exc:
         logger.exception("GPT Researcher HTTP error")
-        await status.edit_text(f"Erreur API GPT Researcher : {exc.response.status_code}")
+        if status is not None:
+            await status.edit_text(f"Erreur API GPT Researcher : {exc.response.status_code}")
+        return
+    except httpx.RequestError as exc:
+        logger.exception("Network error while contacting GPT Researcher")
+        if status is not None:
+            await status.edit_text(f"Erreur réseau avec GPT Researcher : {exc!s}")
         return
     except Exception as exc:
-        logger.exception("GPT Researcher request failed")
-        await status.edit_text(f"Échec : {exc!s}")
+        if status is None:
+            logger.exception(
+                "Telegram error while sending initial status for research task"
+            )
+        else:
+            logger.exception("GPT Researcher request failed")
+            try:
+                await status.edit_text(f"Échec : {exc!s}")
+            except Exception:
+                pass
         return
 
     report_md = _markdown_report_or_none(data)
@@ -204,7 +221,7 @@ async def _process_research_task(
     md_path, pdf_path = _prepare_artifact_paths(base)
 
     try:
-        _write_markdown_and_pdf(md_path, pdf_path, report_md)
+        await asyncio.to_thread(_write_markdown_and_pdf, md_path, pdf_path, report_md)
         await status.edit_text("Envoi des fichiers…")
         await _send_artifacts(
             bot,

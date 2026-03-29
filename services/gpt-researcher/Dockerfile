@@ -33,10 +33,11 @@ WORKDIR /usr/src/app
 ARG GPT_RESEARCHER_REF=v3.4.3
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/* \
     && git clone --depth 1 --branch "${GPT_RESEARCHER_REF}" \
         https://github.com/assafelovic/gpt-researcher.git /usr/src/app \
-    && rm -rf /usr/src/app/.git
+    && rm -rf /usr/src/app/.git \
+    && apt-get purge -y --auto-remove git \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt --upgrade --prefer-binary \
