@@ -15,6 +15,7 @@ RUN apt-get update \
         fonts-noto-color-emoji \
         wget \
         xvfb \
+        xauth \
     && rm -rf /var/lib/apt/lists/* \
     && mv /usr/bin/chromium /usr/bin/chromium-real \
     && printf '%s\n' '#!/bin/sh' 'exec /usr/bin/chromium-real --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer "$@"' > /usr/bin/chromium \
