@@ -14,6 +14,7 @@ RUN apt-get update \
         fonts-liberation \
         fonts-noto-color-emoji \
         wget \
+        xvfb \
     && rm -rf /var/lib/apt/lists/* \
     && mv /usr/bin/chromium /usr/bin/chromium-real \
     && printf '%s\n' '#!/bin/sh' 'exec /usr/bin/chromium-real --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer "$@"' > /usr/bin/chromium \
@@ -67,4 +68,4 @@ RUN useradd -ms /bin/bash gpt-researcher \
 USER gpt-researcher
 WORKDIR /usr/src/app
 
-CMD uvicorn main:app --host ${HOST} --port ${PORT} --workers ${WORKERS}
+CMD xvfb-run -a uvicorn main:app --host ${HOST} --port ${PORT} --workers ${WORKERS}
