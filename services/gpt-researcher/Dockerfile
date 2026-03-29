@@ -34,7 +34,9 @@ RUN apt-get update \
 
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt --upgrade --prefer-binary \
-    && pip install --no-cache-dir -r multi_agents/requirements.txt --upgrade --prefer-binary
+    && pip install --no-cache-dir -r multi_agents/requirements.txt --upgrade --prefer-binary \
+    # Ajout des dépendances pour les Retrievers et Scrapers alternatifs
+    && pip install --no-cache-dir duckduckgo-search nodriver beautifulsoup4
 
 FROM gpt-researcher-install AS gpt-researcher
 
