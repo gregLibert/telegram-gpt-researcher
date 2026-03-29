@@ -17,7 +17,7 @@ services:
       PORT: "8000"
       WORKERS: ${GPTR_WORKERS:-1}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-INFO}
-      # Chromium / Selenium (headless, Docker, ARM64-friendly)
+      # Chromium (wrapper + env; nodriver/zendriver)
       CHROME_BIN: /usr/bin/chromium
       CHROMIUM_FLAGS: "--headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --disable-setuid-sandbox --window-size=1920,1080 --remote-debugging-port=9222"
       PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"

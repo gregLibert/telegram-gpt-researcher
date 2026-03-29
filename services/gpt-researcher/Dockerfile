@@ -15,6 +15,9 @@ RUN apt-get update \
         fonts-noto-color-emoji \
         wget \
     && rm -rf /var/lib/apt/lists/* \
+    && mv /usr/bin/chromium /usr/bin/chromium-real \
+    && printf '%s\n' '#!/bin/sh' 'exec /usr/bin/chromium-real --no-sandbox --disable-dev-shm-usage "$@"' > /usr/bin/chromium \
+    && chmod +x /usr/bin/chromium \
     && ln -sf /usr/bin/chromium /usr/bin/google-chrome \
     && chromium --version \
     && (chromedriver --version || true)
@@ -50,7 +53,7 @@ EXPOSE ${PORT}
 ARG WORKERS=1
 ENV WORKERS=${WORKERS}
 
-# Binaire Chromium + flags headless (documentés ; le code Selenium ajoute déjà --no-sandbox sur Linux)
+# Chromium wrapper injects --no-sandbox for nodriver/zendriver in Docker; extra flags below for other tools
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMIUM_FLAGS="--headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --disable-setuid-sandbox --window-size=1920,1080 --remote-debugging-port=9222"
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
