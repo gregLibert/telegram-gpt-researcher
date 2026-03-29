@@ -16,7 +16,7 @@ RUN apt-get update \
         wget \
     && rm -rf /var/lib/apt/lists/* \
     && mv /usr/bin/chromium /usr/bin/chromium-real \
-    && printf '%s\n' '#!/bin/sh' 'exec /usr/bin/chromium-real --no-sandbox --disable-dev-shm-usage "$@"' > /usr/bin/chromium \
+    && printf '%s\n' '#!/bin/sh' 'exec /usr/bin/chromium-real --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer "$@"' > /usr/bin/chromium \
     && chmod +x /usr/bin/chromium \
     && ln -sf /usr/bin/chromium /usr/bin/google-chrome \
     && chromium --version \
