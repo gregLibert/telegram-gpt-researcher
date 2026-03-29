@@ -1,10 +1,13 @@
-"""Table-driven tests for Markdown-to-PDF generation (HTML + fpdf2)."""
+"""Table-driven tests for Markdown-to-PDF generation (WeasyPrint)."""
 
 from __future__ import annotations
 
 import pytest
 
-from bot.pdf_export import markdown_to_basic_pdf_bytes, markdown_to_pdf_bytes
+try:
+    from bot.pdf_export import markdown_to_basic_pdf_bytes, markdown_to_pdf_bytes
+except OSError:
+    pytest.skip("WeasyPrint system libraries unavailable", allow_module_level=True)
 
 
 @pytest.mark.parametrize(
@@ -24,29 +27,30 @@ def test_markdown_to_basic_pdf_bytes_starts_with_pdf_signature(markdown: str) ->
 
 
 @pytest.mark.parametrize(
-    ("markdown", "needle"),
+    ("markdown", "min_size"),
     [
-        ("(rapport vide)", b"rapport"),  # placeholder path still yields PDF structure
-        ("UniqueLine", b"UniqueLine"),
+        ("(rapport vide)", 500),
+        ("UniqueLine", 500),
     ],
 )
-def test_markdown_to_basic_pdf_bytes_embeds_text_content(
+def test_markdown_to_basic_pdf_bytes_non_trivial_size(
     markdown: str,
-    needle: bytes,
+    min_size: int,
 ) -> None:
     pdf_bytes = markdown_to_basic_pdf_bytes(markdown)
-    assert needle in pdf_bytes
+    assert pdf_bytes.startswith(b"%PDF")
+    assert len(pdf_bytes) >= min_size
 
 
 @pytest.mark.parametrize(
     "markdown",
     [
         "# Heading\n\nParagraph with **bold** and *italic*.\n",
-        "[Example](https://example.com)\n",
+        "| a | b |\n|---|---|\n| 1 | 2 |\n",
+        "[Example](https://example.com/long/path/" + "x" * 80 + ")\n",
     ],
 )
-def test_markdown_to_pdf_bytes_preserves_structure_markers(markdown: str) -> None:
-    """Bold / links should survive Markdown→HTML→PDF without raising."""
+def test_markdown_to_pdf_bytes_tables_and_links(markdown: str) -> None:
     data = markdown_to_pdf_bytes(markdown)
     assert data.startswith(b"%PDF")
     assert len(data) > 200

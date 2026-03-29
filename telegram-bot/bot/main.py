@@ -1,4 +1,4 @@
-"""Telegram bot: allowlisted users, GPT Researcher HTTP API, Markdown + PDF delivery."""
+"""Telegram bot: allowlisted users, GPT Researcher HTTP API, PDF report delivery."""
 
 from __future__ import annotations
 
@@ -153,23 +153,13 @@ async def _send_artifacts(
     chat_id: int,
     *,
     base: str,
-    md_path: Path,
     pdf_path: Path,
     meta: ResearchDeliveryMeta,
 ) -> None:
-    """Send Markdown and PDF with captions that include cost and URL metrics when available."""
+    """Send the PDF with a caption that includes cost and URL metrics when available."""
     summary = format_delivery_summary(meta)
-    md_caption = _compose_document_caption("Rapport (Markdown)", summary)
     pdf_caption = _compose_document_caption("Rapport (PDF)", summary)
-
-    md_bytes = md_path.read_bytes()
     pdf_bytes = pdf_path.read_bytes()
-    await bot.send_document(
-        chat_id=chat_id,
-        document=md_bytes,
-        filename=f"{base}.md",
-        caption=md_caption,
-    )
     await bot.send_document(
         chat_id=chat_id,
         document=pdf_bytes,
@@ -220,7 +210,6 @@ async def _process_research_task(
             bot,
             chat_id,
             base=base,
-            md_path=md_path,
             pdf_path=pdf_path,
             meta=meta,
         )
@@ -242,7 +231,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "Assistant de recherche automatisé (GPT Researcher).\n\n"
         "Posez une question avec : /research <votre sujet>\n"
-        "Vous recevrez un rapport en Markdown et en PDF.\n\n"
+        "Vous recevrez le rapport au format PDF.\n\n"
         "Pour les modes avancés (--deep, plan détaillé, etc.), utilisez /help."
     )
 
